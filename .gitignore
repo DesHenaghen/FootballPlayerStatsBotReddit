@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Auth Config
+config.ini
+
 # Pycharm
 .idea/
 
