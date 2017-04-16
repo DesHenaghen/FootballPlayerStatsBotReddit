@@ -1,52 +1,85 @@
+# imports
 import praw
 import datetime
 from bs4 import BeautifulSoup
 import urllib
 import ConfigParser
+
+# Load config file
 config = ConfigParser.ConfigParser()
 config.read("config.ini")
 
-
+# Get bot start time for new comment check
 starttime = datetime.datetime.utcnow()
 print("Start "+str(starttime))
 
-print(config.get('Authentication', 'client_id'))
+# searchpage = urllib.urlopen('https://www.statbunker.com/usual/search?action=Find&search=ryan+christie').read()
+# soup = BeautifulSoup(searchpage, "html.parser")
+# player = soup.find("table", "players").find("tbody").find_all("tr")[0].find_all("td")[0].a['href'].split('=')[1]
 
+# print player
+
+# Connect to Reddit
 bot = praw.Reddit(
   user_agent='FootballPlayerStatsBot v0.1',
   client_id=config.get('Authentication', 'client_id'),
   client_secret=config.get('Authentication', 'client_secret'),
   username=config.get('Authentication', 'username'),
-  password=config.get('Authentication', 'password'),
+  password=config.get('Authentication', 'password')
 )
 
+# Connect to subreddit
 subreddit = bot.subreddit('kieryweery')
 
+# Fetch comment stream
 comments = subreddit.stream.comments()
 
-
+# Loop through comments in stream
 for comment in comments:
+    # Extract information from the comment
     text = comment.body
     author = comment.author
     created = comment.created_utc
 
+    # If the comment mentioned the keyword 'footballplayerstats'
     if 'footballplayerstats' in text.lower() and datetime.datetime.utcfromtimestamp(created) > starttime:
-        page = urllib.urlopen('https://www.statbunker.com/players/getPlayerStats?player_id=36682').read()
-        soup = BeautifulSoup(page)
-        print(soup.prettify())
-        print(text)
-        print(datetime.datetime.utcfromtimestamp(created))
+        # Split requested name up
+        requestedname = text.split(' ', 1)[1].split(' ')
+
+        # Create search url
+        searchurl = 'https://www.statbunker.com/usual/search?action=Find&search='
+        for index, word in enumerate(requestedname):
+            searchurl += word
+            if len(requestedname)> index + 1:
+                   searchurl += '+'
+
+        print(searchurl)
+
+        # Search for player
+        searchpage = urllib.urlopen(searchurl).read()
+        soup = BeautifulSoup(searchpage, "html.parser")
+        # Get player id from returned html page
+        player = soup.find("table", "players").find("tbody").find_all("tr")[0].find_all("td")[0].a['href'].split('=')[1]
+
+        print "player", player
+
+        # Extract whole player name
         text = text.split(' ', 1)[1]
         print('You want to find stats for '+text)
 
+
+        # Use fethched player id to request player stats
         page = urllib.urlopen(
-          'https://www.statbunker.com/players/GetHistoryStats?player_id=36682&comps_type=-1&dates=2016').read()
+          'https://www.statbunker.com/players/GetHistoryStats?player_id='+player+'&comps_type=-1&dates=2016').read()
         soup = BeautifulSoup(page, "html.parser")
+        # Get stats tables
         statstables = soup.find("table", "table").find("tbody").find_all("tr")
+        # Get stats tables headers
         statstablesheaders = soup.find("table", "table").find("thead").find("tr").find_all("th")
 
         headers = []
 
+        # Extract header names
         for header in statstablesheaders:
             if header.img:
                 content = header.img['alt']
@@ -59,6 +92,7 @@ for comment in comments:
 
         collatedstats = []
 
+        # Extract table stats
         for i, statstable in enumerate(statstables):
             stats = statstable.find_all("td")
             collatedstats.append([])
@@ -77,6 +111,7 @@ for comment in comments:
 
         reply = ""
 
+        # Output stats for each competition
         for comp in collatedstats:
             try:
                 games = int(comp[2][1])
@@ -100,4 +135,5 @@ for comment in comments:
                                                                                                             goals,
                                                                                                             assists)
         print reply
+        # Reply to comment with stats
         comment.reply(reply)
